@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Sistema de Inscripción de Cursos con Tau Prolog</title>
+    
+    <script src="tau-prolog.js"></script>
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f4;
+            color: #333;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+        }
+        select, input[type="button"] {
+            padding: 10px;
+            margin: 5px 10px 5px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+        }
+        input[type="button"] {
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        input[type="button"]:hover {
+            background-color: #0056b3;
+        }
+        #resultado {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #e9ecef;
+            border: 1px solid #ced4da;
+        }
+        label {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Sistema de Verificación de Inscripción de Cursos</h1>
+    <p>Este sistema utiliza una base de conocimiento en Prolog para determinar si un alumno puede inscribir un curso, basándose en los prerrequisitos y los cursos que ya ha aprobado.</p>
+
+    <h2>Consulta de Elegibilidad</h2>
+    <p>Seleccione el alumno y el curso que desea verificar:</p>
+
+    <label for="alumno">Alumno:</label>
+    <select id="alumno">
+        <option value="juan">Juan</option>
+        <option value="ana">Ana</option>
+        <option value="pedro">Pedro</option>
+        <option value="sofia">Sofía</option>
+    </select>
+
+    <label for="materia">Materia:</label>
+    <select id="materia">
+        <option value="matematicas_i">Matemáticas I</option>
+        <option value="introduccion_programacion">Introducción a la Programación</option>
+        <option value="matematicas_ii">Matemáticas II</option>
+        <option value="programacion_orientada_objetos">Programación Orientada a Objetos</option>
+        <option value="estructuras_de_datos">Estructuras de Datos</option>
+        <option value="bases_de_datos_i">Bases de Datos I</option>
+    </select>
+
+    <input type="button" value="Verificar Elegibilidad" onclick="verificarInscripcion()">
+
+    <div id="resultado">
+        <p>El resultado de la consulta aparecerá aquí.</p>
+    </div>
+
+    <script id="cursos.pl" type="text/prolog">
+        % --- HECHOS ---
+        curso_aprobado(juan, 'matematicas_i').
+        curso_aprobado(juan, 'introduccion_programacion').
+        
+        curso_aprobado(ana, 'matematicas_i').
+        curso_aprobado(ana, 'introduccion_programacion').
+        curso_aprobado(ana, 'programacion_orientada_objetos').
+        curso_aprobado(ana, 'estructuras_de_datos').
+
+        curso_aprobado(pedro, 'matematicas_i').
+        
+        prerrequisito('matematicas_ii', 'matematicas_i').
+        prerrequisito('programacion_orientada_objetos', 'introduccion_programacion').
+        prerrequisito('estructuras_de_datos', 'introduccion_programacion').
+        prerrequisito('bases_de_datos_i', 'estructuras_de_datos').
+
+        % --- REGLAS ---
+        puede_inscribir(Alumno, Materia) :-
+            forall(prerrequisito(Materia, Prerrequisito), curso_aprobado(Alumno, Prerrequisito)).
+
+        prerrequisito_faltante(Alumno, Materia, Faltante) :-
+            prerrequisito(Materia, Faltante),
+            \+ curso_aprobado(Alumno, Faltante).
+    </script>
+
+    <script>
+        function verificarInscripcion() {
+            const alumno = document.getElementById("alumno").value;
+            const materia = document.getElementById("materia").value;
+            const resultadoDiv = document.getElementById("resultado");
+
+            // Crear sesión de Tau Prolog
+            const session = pl.create();
+
+            // Cargar la base de conocimiento
+            const program = document.getElementById("cursos.pl").textContent;
+            const ok = session.consult(program);
+
+            if (!ok) {
+                resultadoDiv.innerHTML = `<p style="color:red;"><b>Error:</b> No se pudo cargar la base de conocimiento Prolog.</p>`;
+                return;
+            }
+
+            // Consultar
+            const query = `puede_inscribir(${alumno}, '${materia}').`;
+            session.query(query);
+
+            session.answer(function(answer) {
+                if (answer === false) {
+                    resultadoDiv.innerHTML = `<p style="color:red;"><b> NO.</b> El alumno <b>${alumno}</b> no puede inscribir <b>${materia}</b>.</p>`;
+                    buscarPrerrequisitosFaltantes(session, alumno, materia);
+                } else {
+                    resultadoDiv.innerHTML = `<p style="color:green;"><b> SÍ.</b> El alumno <b>${alumno}</b> cumple con todos los requisitos para inscribir <b>${materia}</b>.</p>`;
+                }
+            });
+        }
+
+        function buscarPrerrequisitosFaltantes(session, alumno, materia) {
+            const resultadoDiv = document.getElementById("resultado");
+            const queryFaltantes = `prerrequisito_faltante(${alumno}, '${materia}', Faltante).`;
+            let faltantes = [];
+
+            session.query(queryFaltantes);
+
+            function obtenerRespuestas(answer) {
+                if (!answer) {
+                    if (faltantes.length > 0) {
+                        let listaHtml = '<ul>';
+                        faltantes.forEach(function(materia) {
+                            let nombreMateria = materia.replace(/_/g, " ").replace(/'/g, "");
+                            listaHtml += `<li>${nombreMateria}</li>`;
+                        });
+                        listaHtml += '</ul>';
+                        resultadoDiv.innerHTML += `<p>Le falta aprobar los siguientes prerrequisitos:</p>${listaHtml}`;
+                    }
+                    return;
+                }
+                if (pl.is_substitution(answer)) {
+                    const materiaFaltante = answer.lookup("Faltante").toString();
+                    faltantes.push(materiaFaltante);
+                }
+                session.answer(obtenerRespuestas);
+            }
+            session.answer(obtenerRespuestas);
+        }
+    </script>
+
+</body>
+</html>
